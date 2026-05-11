@@ -6,9 +6,16 @@ from contextlib import contextmanager
 
 def get_db_connection():
     """
-    Reads credentials from database.ini and returns a psycopg2 connection.
-    Do NOT keep a global connection open. Open and close per request.
+    Reads credentials from DATABASE_URL env var (for Vercel/production)
+    or falls back to database.ini (for local development).
     """
+    # Check for Vercel/production environment variable first
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        conn = psycopg2.connect(database_url, sslmode='require')
+        return conn
+
+    # Fallback to local database.ini
     config = configparser.ConfigParser()
 
     # Get absolute path to the database.ini file
