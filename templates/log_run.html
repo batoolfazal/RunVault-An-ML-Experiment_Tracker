@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card form-card">
+    <div class="card-header">
+        <h2>Log Run</h2>
+    </div>
+
+    <form action="{{ url_for('log_run') }}" method="POST" enctype="multipart/form-data" class="grid-form">
+
+        <div class="form-section">
+            <h3>Run Details</h3>
+            <div class="input-field">
+                <label for="experiment_id">Experiment</label>
+                <select id="experiment_id" name="experiment_id" required>
+                    <option value="" disabled selected>Select experiment</option>
+                    {% for exp in experiments %}
+                        <option value="{{ exp[0] }}">{{ exp[1] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="input-field">
+                <label for="run_name">Run Name</label>
+                <input type="text" id="run_name" name="run_name" required placeholder="e.g. resnet50_v2">
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Metrics</h3>
+            <div class="grid-2-col">
+                <div class="input-field">
+                    <label for="accuracy">Accuracy</label>
+                    <input type="number" step="0.0001" id="accuracy" name="accuracy" required placeholder="0.0 – 1.0">
+                </div>
+                <div class="input-field">
+                    <label for="f1_score">F1 Score</label>
+                    <input type="number" step="0.0001" id="f1_score" name="f1_score" required placeholder="0.0 – 1.0">
+                </div>
+                <div class="input-field">
+                    <label for="train_loss">Train Loss</label>
+                    <input type="number" step="0.000001" id="train_loss" name="train_loss" required>
+                </div>
+                <div class="input-field">
+                    <label for="val_loss">Val Loss</label>
+                    <input type="number" step="0.000001" id="val_loss" name="val_loss" required>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section">
+            <h3>Hyperparameters</h3>
+            <div class="grid-2-col">
+                <div class="input-field">
+                    <label for="epochs">Epochs</label>
+                    <input type="number" id="epochs" name="epochs" required>
+                </div>
+                <div class="input-field">
+                    <label for="learning_rate">Learning Rate</label>
+                    <input type="text" id="learning_rate" name="learning_rate" required placeholder="e.g. 0.001">
+                </div>
+                <div class="input-field">
+                    <label for="gpu_count">GPU Count</label>
+                    <input type="number" id="gpu_count" name="gpu_count" min="0" value="1" required>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-section file-upload-section">
+            <h3>Upload Image</h3>
+            <div class="input-field file-input">
+                <label for="image">Confusion Matrix (optional)</label>
+                <input type="file" id="image" name="image" accept="image/*">
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="{{ url_for('home') }}" class="btn btn-secondary">Cancel</a>
+            <button type="submit" class="btn btn-primary">Save Run</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

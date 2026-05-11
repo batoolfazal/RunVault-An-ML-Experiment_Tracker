@@ -1,0 +1,35 @@
+database.ini
+firebase_config.json
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Python virtual environments
+.venv/
+
+# Local environment/config secrets
+.env
+.env.*
+!.env.example
+
+# Logs and local runtime outputs
+*.log
+app_run_log.txt
+
+# Test/cache tooling artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE/editor settings
+.vscode/
+.idea/
+
+# Local generated artifacts
+confusion_run_*.png

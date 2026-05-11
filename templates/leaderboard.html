@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-header">
+    <h1>Leaderboard</h1>
+</div>
+
+<div class="card full-width">
+    <div class="table-responsive">
+        <table class="data-table leaderboard-table">
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Run</th>
+                    <th>Experiment</th>
+                    <th>Accuracy</th>
+                    <th>Loss (Val / Train)</th>
+                    <th>Status</th>
+                    <th>Artifact</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr class="{% if loop.index == 1 %}top-rank{% endif %}">
+                    <td class="rank-col">#{{ loop.index }}</td>
+                    <td class="run-name"><b>{{ run.run_name }}</b></td>
+                    <td>{{ run.experiment_name }}</td>
+                    <td>
+                        {% if run.accuracy != None %}
+                        <div class="accuracy-bar-container">
+                            <div class="accuracy-bar" style="width: {{ run.accuracy * 100 }}%"></div>
+                        </div>
+                        <span class="accuracy-text">{{ (run.accuracy * 100) | round(2) }}%</span>
+                        {% else %}
+                        <span class="accuracy-text">–</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="loss val">{{ run.val_loss if run.val_loss != None else '–' }}</span> /
+                        <span class="loss train">{{ run.train_loss if run.train_loss != None else '–' }}</span>
+                    </td>
+                    <td>
+                        {% if run.status == 'promoted' %}
+                            <span class="badge badge-success">Promoted</span>
+                        {% elif run.status == 'overfitting_alert' %}
+                            <span class="badge badge-danger">Overfitting</span>
+                        {% else %}
+                            <span class="badge badge-default">{{ run.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td class="artifacts-col">
+                        {% if run.display_image_url %}
+                            <a href="{{ run.display_image_url }}" target="_blank" class="artifact-link">
+                                <img src="{{ run.display_image_url }}" alt="Run Image" class="thumbnail">
+                            </a>
+                        {% else %}
+                            <span class="no-artifact">–</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center; padding: 2rem;">No runs found.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

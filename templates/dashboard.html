@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ML Tracker — Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+</head>
+<body class="wb-body">
+
+<!-- ── Top Navbar ── -->
+<nav class="wb-topbar">
+    <div class="wb-brand">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22">
+            <path d="M2 12l5.25 5 2.625-3 2.625 3L22 7"/>
+        </svg>
+        <span>ML Tracker</span>
+    </div>
+    <div class="wb-tabs">
+        <button class="wb-tab {% if active_tab=='runs' %}active{% endif %}" onclick="switchTab('runs')">Runs</button>
+        <button class="wb-tab {% if active_tab=='metrics' %}active{% endif %}" onclick="switchTab('metrics')">Metrics</button>
+        <button class="wb-tab {% if active_tab=='registry' %}active{% endif %}" onclick="switchTab('registry')">Registry</button>
+        <button class="wb-tab {% if active_tab=='deployments' %}active{% endif %}" onclick="switchTab('deployments')">Deployments</button>
+        {% if session.get('user_role') == 'data_scientist' %}
+        <a href="{{ url_for('log_run') }}" class="wb-tab wb-tab-action">+ Log Run</a>
+        {% endif %}
+    </div>
+    <div class="wb-user">
+        {% if session.get('user_id') %}
+        <span class="wb-role-badge">{{ session['user_role'] | replace('_', ' ') | title }}</span>
+        <a href="{{ url_for('logout') }}" class="wb-logout">Logout</a>
+        {% endif %}
+    </div>
+</nav>
+
+<!-- ── Flash Messages & Error Container ── -->
+<div class="wb-container">
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+    <div class="flash-messages">
+        {% for message in messages %}
+        <div class="alert">{{ message }}</div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+    <div id="api-error-container" style="display:none;padding:1rem;margin-bottom:1rem;background-color:#fee2e2;border:1px solid #fca5a5;border-radius:0.375rem;color:#7f1d1d">
+        <strong>Error:</strong> <span id="api-error-message"></span>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB 1: RUNS — Sidebar + Charts
+     ════════════════════════════════════════════ -->
+<div id="tab-runs" class="wb-tab-content" style="{% if active_tab != 'runs' %}display:none{% endif %}">
+    <div class="wb-split">
+        <!-- Left: Run Sidebar -->
+        <div class="wb-sidebar">
+            <div class="wb-sidebar-header">
+                <h3>Runs</h3>
+                {% if session.get('user_role') == 'data_scientist' %}
+                <a href="{{ url_for('log_run') }}" class="btn btn-primary btn-sm">+ New</a>
+                {% endif %}
+            </div>
+            <div class="wb-run-list" id="run-list">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+
+        <!-- Right: Chart Panels -->
+        <div class="wb-panels">
+            <div class="wb-section">
+                <div class="wb-section-header" onclick="toggleSection(this)">
+                    <span>▼ Performance Metrics</span>
+                </div>
+                <div class="wb-section-body">
+                    <div class="wb-panel-grid">
+                        <div class="wb-panel">
+                            <h4>Accuracy over Epochs</h4>
+                            <canvas id="chart-acc-epoch"></canvas>
+                            <div class="wb-info-box" id="info-acc-epoch"></div>
+                        </div>
+                        <div class="wb-panel">
+                            <h4>Loss over Epochs</h4>
+                            <canvas id="chart-loss-epoch"></canvas>
+                            <div class="wb-info-box" id="info-loss-epoch"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB 2: METRICS — Full-width charts
+     ════════════════════════════════════════════ -->
+<div id="tab-metrics" class="wb-tab-content" style="{% if active_tab != 'metrics' %}display:none{% endif %}">
+    <div class="wb-container">
+        <div class="wb-section">
+            <div class="wb-section-header" onclick="toggleSection(this)">
+                <span>▼ Performance Metrics</span>
+            </div>
+            <div class="wb-section-body">
+                <div class="wb-panel-grid wb-grid-2x2">
+                    <div class="wb-panel">
+                        <h4>Accuracy vs Epoch</h4>
+                        <canvas id="chart-m-acc"></canvas>
+                        <div class="wb-info-box" id="info-m-acc"></div>
+                    </div>
+                    <div class="wb-panel">
+                        <h4>Loss vs Epoch</h4>
+                        <canvas id="chart-m-loss"></canvas>
+                        <div class="wb-info-box" id="info-m-loss"></div>
+                    </div>
+                    <div class="wb-panel">
+                        <h4>Val Accuracy vs Epoch</h4>
+                        <canvas id="chart-m-valacc"></canvas>
+                        <div class="wb-info-box" id="info-m-valacc"></div>
+                    </div>
+                    <div class="wb-panel">
+                        <h4>Final Accuracy Comparison</h4>
+                        <canvas id="chart-m-bar"></canvas>
+                        <div class="wb-info-box" id="info-m-bar"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="wb-section">
+            <div class="wb-section-header collapsed" onclick="toggleSection(this)">
+                <span>▶ System Metrics</span>
+            </div>
+            <div class="wb-section-body" style="display:none">
+                <div class="wb-panel-grid">
+                    <div class="wb-panel">
+                        <h4>GPU Count per Run</h4>
+                        <canvas id="chart-m-gpu"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB 3: REGISTRY — Models table
+     ════════════════════════════════════════════ -->
+<div id="tab-registry" class="wb-tab-content" style="{% if active_tab != 'registry' %}display:none{% endif %}">
+    <div class="wb-container">
+        <div class="wb-section">
+            <div class="wb-section-header">
+                <span>Model Registry</span>
+            </div>
+            <div class="wb-section-body">
+                {% if session.get('user_role') in ['mlops_engineer', 'admin'] and promotable_runs %}
+                <div class="wb-promote-section">
+                    <h4>Promote a Run</h4>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead><tr><th>Run</th><th>Experiment</th><th>Accuracy</th><th></th></tr></thead>
+                            <tbody>
+                                {% for run in promotable_runs %}
+                                <tr>
+                                    <td><b>{{ run[1] }}</b></td>
+                                    <td>{{ run[3] }}</td>
+                                    <td><span class="badge badge-success">{{ run[2] }}</span></td>
+                                    <td>
+                                        <form action="{{ url_for('promote', run_id=run[0]) }}" method="POST" style="margin:0">
+                                            <button class="btn btn-primary btn-sm">Promote</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endif %}
+
+                <h4 style="margin-top:1.5rem">Registered Models</h4>
+                <div class="table-responsive" id="registry-table-container">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     TAB 4: DEPLOYMENTS — Health table + actions
+     ════════════════════════════════════════════ -->
+<div id="tab-deployments" class="wb-tab-content" style="{% if active_tab != 'deployments' %}display:none{% endif %}">
+    <div class="wb-container">
+        <div class="wb-section">
+            <div class="wb-section-header">
+                <span>Deployment Health</span>
+            </div>
+            <div class="wb-section-body">
+                <div class="table-responsive">
+                    <table class="data-table" id="deployments-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th><th>Model</th><th>Env</th><th>Status</th>
+                                <th>Accuracy</th><th>Error Rate</th><th>Latency (ms)</th>
+                                <th>Uptime (h)</th>
+                                {% if session.get('user_role') in ['mlops_engineer', 'admin'] %}
+                                <th>Actions</th>
+                                {% endif %}
+                            </tr>
+                        </thead>
+                        <tbody id="deployments-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ════════════════════════════════════════════
+     JAVASCRIPT
+     ════════════════════════════════════════════ -->
+<script>
+const COLORS = ['#4361ee','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16'];
+const USER_ROLE = '{{ session.get("user_role", "") }}';
+let allRuns = [];
+let allMetrics = {};
+let selectedRunId = null;
+let charts = {};
+
+// ── Error handling helpers ──
+function showError(message) {
+    const container = document.getElementById('api-error-container');
+    const messageEl = document.getElementById('api-error-message');
+    messageEl.textContent = message;
+    container.style.display = 'block';
+}
+
+function hideError() {
+    const container = document.getElementById('api-error-container');
+    container.style.display = 'none';
+}
+
+// ── Tab switching ──
+function switchTab(tab) {
+    document.querySelectorAll('.wb-tab-content').forEach(function(el) { el.style.display = 'none'; });
+    document.querySelectorAll('.wb-tab').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('tab-' + tab).style.display = '';
+    // Highlight the clicked tab
+    var tabs = document.querySelectorAll('.wb-tab');
+    tabs.forEach(function(t) {
+        if (t.textContent.trim().toLowerCase() === tab || t.getAttribute('onclick') === "switchTab('" + tab + "')") {
+            t.classList.add('active');
+        }
+    });
+
+    if (tab === 'metrics' && !charts['m-acc']) loadMetricsTab();
+    if (tab === 'deployments') loadDeployments();
+    if (tab === 'registry') loadRegistry();
+}
+
+// ── Section collapse ──
+function toggleSection(header) {
+    const body = header.nextElementSibling;
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? '' : 'none';
+    const span = header.querySelector('span');
+    if (isHidden) {
+        span.textContent = span.textContent.replace('▶', '▼');
+        header.classList.remove('collapsed');
+    } else {
+        span.textContent = span.textContent.replace('▼', '▶');
+        header.classList.add('collapsed');
+    }
+}
+
+// ── Chart helper ──
+function makeLineChart(canvasId, infoId, datasets, xLabel, yLabel) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    if (charts[canvasId]) charts[canvasId].destroy();
+
+    charts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) { return ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(4); }
+                    }
+                },
+                legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } }
+            },
+            scales: {
+                x: { title: { display: true, text: xLabel }, type: 'linear' },
+                y: { title: { display: true, text: yLabel } }
+            },
+            onClick(e, elements) {
+                if (elements.length > 0) {
+                    const el = elements[0];
+                    const ds = charts[canvasId].data.datasets[el.datasetIndex];
+                    const pt = ds.data[el.index];
+                    const box = document.getElementById(infoId);
+                    if (box) {
+                        box.textContent = `Run: ${ds.label} | Epoch: ${pt.x} | Value: ${pt.y.toFixed(4)}`;
+                        box.style.display = 'block';
+                    }
+                }
+            }
+        }
+    });
+    return charts[canvasId];
+}
+
+function makeBarChart(canvasId, labels, values, label, infoId) {
+    const ctx = document.getElementById(canvasId).getContext('2d');
+    if (charts[canvasId]) charts[canvasId].destroy();
+
+    charts[canvasId] = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label,
+                data: values,
+                backgroundColor: COLORS.slice(0, labels.length).map(c => c + '99'),
+                borderColor: COLORS.slice(0, labels.length),
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: { label: function(ctx) { return ctx.parsed.y.toFixed(4); } }
+                },
+                legend: { display: false }
+            },
+            onClick(e, elements) {
+                if (elements.length && infoId) {
+                    const idx = elements[0].index;
+                    const box = document.getElementById(infoId);
+                    box.textContent = `${labels[idx]}: ${values[idx].toFixed(4)}`;
+                    box.style.display = 'block';
+                }
+            }
+        }
+    });
+}
+
+// ── Runs Tab ──
+async function loadRunsTab() {
+    try {
+        const res = await fetch('/api/runs/all');
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to load runs');
+        allRuns = json.data;
+        hideError();
+        renderSidebar();
+        await loadRunCharts();
+    } catch (error) {
+        showError('Failed to load runs: ' + error.message);
+    }
+}
+
+function renderSidebar() {
+    const list = document.getElementById('run-list');
+    list.innerHTML = allRuns.map((r, i) => {
+        const imgUrl = `/artifacts/images/${r.id}`;
+        const isExpanded = selectedRunId === r.id;
+        const color = COLORS[i % COLORS.length];
+        const hp = r.hyperparameters || {};
+
+        // Expanded detail rows
+        const detail = isExpanded ? `
+        <div class="wb-run-detail-inline">
+            <div class="wb-run-meta">
+                <div class="wb-meta-row"><span>Experiment</span><span>${r.experiment_name}</span></div>
+                <div class="wb-meta-row"><span>Val Loss</span><span>${r.val_loss != null ? r.val_loss : '\u2013'}</span></div>
+                <div class="wb-meta-row"><span>Train Loss</span><span>${r.train_loss != null ? r.train_loss : '\u2013'}</span></div>
+                <div class="wb-meta-row"><span>Status</span><span class="badge ${r.status === 'promoted' ? 'badge-success' : r.status === 'overfitting_alert' ? 'badge-danger' : 'badge-default'}">${r.status}</span></div>
+                ${hp.optimizer ? `<div class="wb-meta-row"><span>Optimizer</span><span>${hp.optimizer}</span></div>` : ''}
+                ${hp.learning_rate ? `<div class="wb-meta-row"><span>LR</span><span>${hp.learning_rate}</span></div>` : ''}
+                ${hp.batch_size ? `<div class="wb-meta-row"><span>Batch Size</span><span>${hp.batch_size}</span></div>` : ''}
+                ${hp.epochs ? `<div class="wb-meta-row"><span>Epochs</span><span>${hp.epochs}</span></div>` : ''}
+                ${hp.gpu_count ? `<div class="wb-meta-row"><span>GPUs</span><span>${hp.gpu_count}</span></div>` : ''}
+            </div>
+            <div class="wb-run-img-wrap">
+                <a href="${imgUrl}" target="_blank">
+                    <img src="${imgUrl}" alt="Confusion Matrix" class="wb-run-thumb"
+                         onerror="this.parentElement.innerHTML='No image'">
+                </a>
+            </div>
+        </div>` : '';
+
+        return `
+        <div class="wb-run-item ${isExpanded ? 'selected expanded' : ''}"
+             data-id="${r.id}" onclick="selectRun(${r.id})">
+            <div class="wb-run-row">
+                <span class="wb-run-chevron">${isExpanded ? '\u25BC' : '\u25B6'}</span>
+                <span class="wb-run-dot" style="background:${color}"></span>
+                <span class="wb-run-name">${r.run_name}</span>
+                <span class="wb-run-acc">${r.accuracy ? (r.accuracy * 100).toFixed(1) + '%' : '\u2013'}</span>
+            </div>
+            ${detail}
+        </div>`;
+    }).join('');
+}
+
+async function loadRunCharts() {
+    try {
+        const res = await fetch('/api/metrics/all');
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to load metrics');
+        allMetrics = json.data;
+        buildRunCharts('accuracy', 'chart-acc-epoch', 'info-acc-epoch', 'Epoch', 'Accuracy');
+        buildRunCharts('loss', 'chart-loss-epoch', 'info-loss-epoch', 'Epoch', 'Loss');
+    } catch (error) {
+        showError('Failed to load metrics: ' + error.message);
+    }
+}
+
+function buildRunCharts(metricName, canvasId, infoId, xLabel, yLabel) {
+    const datasets = [];
+    let i = 0;
+    for (const [runId, info] of Object.entries(allMetrics)) {
+        const pts = (info.metrics[metricName] || []).map(p => ({x: p.epoch, y: p.value}));
+        if (pts.length === 0) continue;
+
+        const isSelected = selectedRunId ? parseInt(runId) === selectedRunId : true;
+        datasets.push({
+            label: info.run_name,
+            data: pts,
+            borderColor: isSelected ? COLORS[i % COLORS.length] : COLORS[i % COLORS.length] + '4D',
+            backgroundColor: COLORS[i % COLORS.length] + '33',
+            tension: 0.3,
+            pointRadius: isSelected ? 4 : 2,
+            pointHoverRadius: 7,
+            borderWidth: isSelected ? 2.5 : 1,
+            order: isSelected ? 0 : 1
+        });
+        i++;
+    }
+    makeLineChart(canvasId, infoId, datasets, xLabel, yLabel);
+}
+
+function selectRun(id) {
+    selectedRunId = selectedRunId === id ? null : id;
+    renderSidebar();
+    buildRunCharts('accuracy', 'chart-acc-epoch', 'info-acc-epoch', 'Epoch', 'Accuracy');
+    buildRunCharts('loss', 'chart-loss-epoch', 'info-loss-epoch', 'Epoch', 'Loss');
+}
+
+// ── Metrics Tab ──
+async function loadMetricsTab() {
+    if (Object.keys(allMetrics).length === 0) {
+        try {
+            const res = await fetch('/api/metrics/all');
+            if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+            const json = await res.json();
+            if (!json.success) throw new Error(json.error || 'Failed to load metrics');
+            allMetrics = json.data;
+            hideError();
+        } catch (error) {
+            showError('Failed to load metrics: ' + error.message);
+            return;
+        }
+    }
+
+    // Accuracy chart
+    buildMetricChart('accuracy', 'chart-m-acc', 'info-m-acc', 'Epoch', 'Accuracy');
+    buildMetricChart('loss', 'chart-m-loss', 'info-m-loss', 'Epoch', 'Loss');
+    buildMetricChart('val_accuracy', 'chart-m-valacc', 'info-m-valacc', 'Epoch', 'Val Accuracy');
+
+    // Bar chart: final accuracy per run
+    const labels = [], values = [];
+    for (const run of allRuns) {
+        labels.push(run.run_name);
+        values.push(run.accuracy || 0);
+    }
+    makeBarChart('chart-m-bar', labels, values, 'Final Accuracy', 'info-m-bar');
+
+    // GPU bar chart
+    const gpuLabels = [], gpuValues = [];
+    for (const run of allRuns) {
+        gpuLabels.push(run.run_name);
+        gpuValues.push(parseInt(run.hyperparameters?.gpu_count || '0'));
+    }
+    makeBarChart('chart-m-gpu', gpuLabels, gpuValues, 'GPU Count');
+}
+
+function buildMetricChart(metricName, canvasId, infoId, xLabel, yLabel) {
+    const datasets = [];
+    let i = 0;
+    for (const [runId, info] of Object.entries(allMetrics)) {
+        const pts = (info.metrics[metricName] || []).map(p => ({x: p.epoch, y: p.value}));
+        if (pts.length === 0) continue;
+        datasets.push({
+            label: info.run_name,
+            data: pts,
+            borderColor: COLORS[i % COLORS.length],
+            backgroundColor: COLORS[i % COLORS.length] + '33',
+            tension: 0.3,
+            pointRadius: 4,
+            pointHoverRadius: 7,
+            borderWidth: 2
+        });
+        i++;
+    }
+    makeLineChart(canvasId, infoId, datasets, xLabel, yLabel);
+}
+
+// ── Registry Tab ──
+async function loadRegistry() {
+    const container = document.getElementById('registry-table-container');
+    try {
+        const res = await fetch('/api/models');
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to load models');
+
+        const models = json.data;
+        if (!models || models.length === 0) {
+            container.innerHTML = '<p style="color:var(--text-muted);padding:1rem">No models registered yet.</p>';
+            hideError();
+            return;
+        }
+
+        const canDeploy = ['mlops_engineer','admin'].includes(USER_ROLE);
+        container.innerHTML = `<table class="data-table">
+            <thead><tr><th>Model</th><th>Run</th><th>Experiment</th><th>Accuracy</th><th>Stage</th>${canDeploy ? '<th>Action</th>' : ''}</tr></thead>
+            <tbody>${models.map(m => `<tr>
+                <td><b>${m.version}</b></td>
+                <td>${m.run_name}</td>
+                <td>${m.experiment_name}</td>
+                <td>${m.accuracy ? (m.accuracy * 100).toFixed(2) + '%' : '–'}</td>
+                <td><span class="badge ${m.stage === 'deployed' ? 'badge-success' : 'badge-default'}">${m.stage}</span></td>
+                ${canDeploy ? `<td>${m.stage !== 'deployed' ? `
+                    <button class="btn btn-sm btn-primary" onclick="deployModel(${m.id})">Deploy</button>
+                ` : '<span style="color:var(--text-muted)">Deployed</span>'}</td>` : ''}
+            </tr>`).join('')}</tbody>
+        </table>`;
+        hideError();
+    } catch (error) {
+        showError('Failed to load registry: ' + error.message);
+    }
+}
+
+async function deployModel(modelId) {
+    const env = prompt('Deploy environment? Enter staging or production', 'staging');
+    if (!env) return;
+
+    const environment = env.trim().toLowerCase();
+    if (!['staging', 'production'].includes(environment)) {
+        showError('Invalid environment. Use staging or production.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/models/${modelId}/deploy`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({environment})
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to deploy model');
+
+        hideError();
+        loadRegistry();
+        loadDeployments();
+    } catch (error) {
+        showError('Failed to deploy model: ' + error.message);
+    }
+}
+
+// ── Deployments Tab ──
+async function loadDeployments() {
+    try {
+        const res = await fetch('/api/deployments/all');
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        if (!json.success) throw new Error(json.error || 'Failed to load deployments');
+        
+        const tbody = document.getElementById('deployments-body');
+        tbody.innerHTML = json.data.map(d => {
+            const isDegraded = d.degraded;
+            const isActive = d.status === 'active';
+            const rowClass = isDegraded ? 'wb-degraded-row' : '';
+            const statusBadge = isDegraded
+                ? '<span class="badge badge-danger">DEGRADED</span>'
+                : (d.status === 'rolled_back'
+                    ? '<span class="badge badge-default">Rolled Back</span>'
+                    : '<span class="badge badge-success">HEALTHY</span>');
+
+            let actions = '';
+            if (['mlops_engineer','admin'].includes(USER_ROLE) && isActive) {
+                actions = `
+                    <button class="btn btn-sm btn-secondary" onclick="showHealthForm(${d.deployment_id})">Log Health</button>
+                    <button class="btn btn-sm btn-danger-outline" onclick="rollbackDep(${d.deployment_id})">Rollback</button>
+                    <div id="health-form-${d.deployment_id}" class="wb-inline-form" style="display:none">
+                        <input type="number" step="0.01" placeholder="Accuracy" id="hf-acc-${d.deployment_id}">
+                        <input type="number" step="0.1" placeholder="Latency ms" id="hf-lat-${d.deployment_id}">
+                        <input type="number" step="0.001" placeholder="Error Rate" id="hf-err-${d.deployment_id}">
+                        <button class="btn btn-sm btn-primary" onclick="submitHealth(${d.deployment_id})">Submit</button>
+                    </div>`;
+            }
+
+            return `<tr class="${rowClass}">
+                <td>${d.deployment_id}</td>
+                <td>${d.model_name}</td>
+                <td>${d.environment}</td>
+                <td>${statusBadge}</td>
+                <td>${d.live_accuracy != null ? d.live_accuracy.toFixed(2) : '–'}</td>
+                <td>${d.error_rate != null ? d.error_rate.toFixed(3) : '–'}</td>
+                <td>${d.avg_latency_ms != null ? d.avg_latency_ms.toFixed(1) : '–'}</td>
+                <td>${d.uptime_hours != null ? d.uptime_hours.toFixed(1) + 'h' : '–'}</td>
+                ${['mlops_engineer','admin'].includes(USER_ROLE) ? '<td>' + actions + '</td>' : ''}
+            </tr>`;
+        }).join('');
+        hideError();
+    } catch (error) {
+        showError('Failed to load deployments: ' + error.message);
+    }
+}
+
+function showHealthForm(id) {
+    const el = document.getElementById('health-form-' + id);
+    el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+}
+
+async function submitHealth(id) {
+    const acc = document.getElementById('hf-acc-' + id).value;
+    const lat = document.getElementById('hf-lat-' + id).value;
+    const err = document.getElementById('hf-err-' + id).value;
+
+    if (acc === '' || lat === '' || err === '') {
+        showError('Please fill Accuracy, Latency, and Error Rate before submitting.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/deployments/${id}/log_health`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({live_accuracy: acc, avg_latency_ms: lat, error_rate: err})
+        });
+        let json = null;
+        try {
+            json = await res.json();
+        } catch (_) {
+            json = null;
+        }
+
+        if (!res.ok) {
+            const detail = json && json.error ? `: ${json.error}` : '';
+            throw new Error(`HTTP ${res.status}${detail}`);
+        }
+
+        if (json.success) {
+            hideError();
+            loadDeployments();
+        } else {
+            showError('Failed to log health: ' + (json.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showError('Error logging health: ' + error.message);
+    }
+}
+
+async function rollbackDep(id) {
+    const reason = prompt('Reason for rollback:');
+    if (!reason) return;
+
+    try {
+        const res = await fetch(`/api/deployments/${id}/rollback`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({reason})
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        const json = await res.json();
+        if (json.success) {
+            hideError();
+            loadDeployments();
+        } else {
+            showError('Failed to rollback: ' + (json.error || 'Unknown error'));
+        }
+    } catch (error) {
+        showError('Error rolling back deployment: ' + error.message);
+    }
+}
+
+// ── Init ──
+document.addEventListener('DOMContentLoaded', () => {
+    loadRunsTab();
+    const active = '{{ active_tab }}';
+    if (active === 'metrics') loadMetricsTab();
+    if (active === 'deployments') loadDeployments();
+    if (active === 'registry') loadRegistry();
+});
+</script>
+</body>
+</html>
